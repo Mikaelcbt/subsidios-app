@@ -11,11 +11,12 @@ from pathlib import Path
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends, Request
 from fastapi.responses import FileResponse, JSONResponse
 
 from ..core.processor import processar_subsidios, relatorio_para_dict
 from ..core.patterns import ModalidadeContrato
+from ..core.auth import get_current_user
 
 router = APIRouter(prefix="/api", tags=["subsidios"])
 
@@ -26,10 +27,12 @@ OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR", "/tmp/subsidios-output"))
 
 @router.post("/processar")
 async def processar(
+    request: Request,
     arquivos: list[UploadFile] = File(...),
     autor: str = Form(...),
     processo: str = Form(...),
     modalidade: str = Form("emprestimo_consignado"),
+    user: dict = Depends(get_current_user),
 ):
     """Recebe arquivos (ZIPs e/ou PDFs), processa e retorna relatório."""
 

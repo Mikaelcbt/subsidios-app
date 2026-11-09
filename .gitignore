@@ -6,3 +6,5 @@ backend/static/
 .env
 *.egg-info/
 .venv/
+test-data/
+test-output/

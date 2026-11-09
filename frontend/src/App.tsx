@@ -1,4 +1,7 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
+import { supabase } from './lib/supabase'
+import { Auth } from './components/Auth'
+import type { Session } from '@supabase/supabase-js'
 
 interface DocumentoConferencia {
   contrato: string
@@ -34,6 +37,8 @@ interface Relatorio {
 type Etapa = 'upload' | 'processando' | 'resultado'
 
 function App() {
+  const [session, setSession] = useState<Session | null>(null)
+  const [authLoading, setAuthLoading] = useState(true)
   const [etapa, setEtapa] = useState<Etapa>('upload')
   const [autor, setAutor] = useState('')
   const [processo, setProcesso] = useState('')
@@ -42,6 +47,38 @@ function App() {
   const [relatorio, setRelatorio] = useState<Relatorio | null>(null)
   const [erro, setErro] = useState('')
   const [dragAtivo, setDragAtivo] = useState(false)
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session)
+      setAuthLoading(false)
+    })
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session)
+    })
+
+    return () => subscription.unsubscribe()
+  }, [])
+
+  const logout = async () => {
+    await supabase.auth.signOut()
+    setSession(null)
+    setEtapa('upload')
+    setRelatorio(null)
+  }
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+      </div>
+    )
+  }
+
+  if (!session) {
+    return <Auth onAuth={() => supabase.auth.getSession().then(({ data: { session } }) => setSession(session))} />
+  }
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -80,8 +117,10 @@ function App() {
     formData.append('modalidade', modalidade)
 
     try {
+      const token = session?.access_token
       const res = await fetch('/api/processar', {
         method: 'POST',
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
         body: formData,
       })
 
@@ -111,13 +150,24 @@ function App() {
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b border-gray-200">
-        <div className="max-w-5xl mx-auto px-6 py-4 flex items-center gap-3">
-          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-            <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
+        <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+              <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            </div>
+            <h1 className="text-lg font-semibold text-gray-900">Subsídios Processuais</h1>
           </div>
-          <h1 className="text-lg font-semibold text-gray-900">Subsídios Processuais</h1>
+          <div className="flex items-center gap-4">
+            <span className="text-sm text-gray-500">{session.user.user_metadata?.nome || session.user.email}</span>
+            <button
+              onClick={logout}
+              className="text-sm text-gray-400 hover:text-red-500 transition-colors"
+            >
+              Sair
+            </button>
+          </div>
         </div>
       </header>
 
