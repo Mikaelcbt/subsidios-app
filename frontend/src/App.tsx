@@ -47,6 +47,56 @@ function App() {
   const [relatorio, setRelatorio] = useState<Relatorio | null>(null)
   const [erro, setErro] = useState('')
   const [dragAtivo, setDragAtivo] = useState(false)
+  const [driveConectado, setDriveConectado] = useState(false)
+  const [driveEnviando, setDriveEnviando] = useState(false)
+  const [driveUrl, setDriveUrl] = useState('')
+
+  const authHeaders = () => {
+    const token = session?.access_token
+    return token ? { 'Authorization': `Bearer ${token}` } : {}
+  }
+
+  const checkDriveStatus = async () => {
+    try {
+      const res = await fetch('/api/drive/status', { headers: authHeaders() })
+      if (res.ok) {
+        const data = await res.json()
+        setDriveConectado(data.connected)
+      }
+    } catch {}
+  }
+
+  const conectarDrive = async () => {
+    try {
+      const res = await fetch('/api/drive/auth', { headers: authHeaders() })
+      if (res.ok) {
+        const data = await res.json()
+        window.location.href = data.auth_url
+      }
+    } catch {}
+  }
+
+  const enviarParaDrive = async () => {
+    if (!relatorio?.job_id) return
+    setDriveEnviando(true)
+    try {
+      const res = await fetch(`/api/drive/upload/${relatorio.job_id}`, {
+        method: 'POST',
+        headers: authHeaders(),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setDriveUrl(data.drive_url)
+      } else {
+        const err = await res.json()
+        setErro(err.detail || 'Erro ao enviar pro Drive')
+      }
+    } catch {
+      setErro('Erro ao enviar pro Drive')
+    } finally {
+      setDriveEnviando(false)
+    }
+  }
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -58,8 +108,19 @@ function App() {
       setSession(session)
     })
 
+    // Checar se voltou do OAuth do Drive
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('drive') === 'connected') {
+      setDriveConectado(true)
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+
     return () => subscription.unsubscribe()
   }, [])
+
+  useEffect(() => {
+    if (session) checkDriveStatus()
+  }, [session])
 
   const logout = async () => {
     await supabase.auth.signOut()
@@ -160,6 +221,24 @@ function App() {
             <h1 className="text-lg font-semibold text-gray-900">Subsídios Processuais</h1>
           </div>
           <div className="flex items-center gap-4">
+            {driveConectado ? (
+              <span className="text-xs text-green-600 bg-green-50 px-2 py-1 rounded-full flex items-center gap-1">
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                Drive conectado
+              </span>
+            ) : (
+              <button
+                onClick={conectarDrive}
+                className="text-xs text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5"
+              >
+                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M7.71 3.5L1.15 15l4.58 7.5h6.56l-4.58-7.5L14.27 3.5H7.71zm8.56 0l-6.56 11 4.58 7.5h6.56l-4.58-7.5L22.83 3.5h-6.56z" />
+                </svg>
+                Conectar Drive
+              </button>
+            )}
             <span className="text-sm text-gray-500">{session.user.user_metadata?.nome || session.user.email}</span>
             <button
               onClick={logout}
@@ -194,7 +273,15 @@ function App() {
         {etapa === 'processando' && <Processando />}
 
         {etapa === 'resultado' && relatorio && (
-          <Resultado relatorio={relatorio} novoProcessamento={novoProcessamento} />
+          <Resultado
+            relatorio={relatorio}
+            novoProcessamento={novoProcessamento}
+            driveConectado={driveConectado}
+            driveEnviando={driveEnviando}
+            driveUrl={driveUrl}
+            enviarParaDrive={enviarParaDrive}
+            conectarDrive={conectarDrive}
+          />
         )}
       </main>
     </div>
@@ -337,7 +424,11 @@ function Processando() {
   )
 }
 
-function Resultado({ relatorio, novoProcessamento }: { relatorio: Relatorio; novoProcessamento: () => void }) {
+function Resultado({ relatorio, novoProcessamento, driveConectado, driveEnviando, driveUrl, enviarParaDrive, conectarDrive }: {
+  relatorio: Relatorio; novoProcessamento: () => void
+  driveConectado: boolean; driveEnviando: boolean; driveUrl: string
+  enviarParaDrive: () => void; conectarDrive: () => void
+}) {
   const localizados = relatorio.conferencia.filter(c => c.resultado === 'Localizado').length
   const naoLocalizados = relatorio.conferencia.filter(c => c.resultado === 'Não localizado').length
   const manuais = relatorio.conferencia.filter(c => c.resultado === 'Conferência manual').length
@@ -355,15 +446,55 @@ function Resultado({ relatorio, novoProcessamento }: { relatorio: Relatorio; nov
           <h2 className="text-2xl font-bold text-gray-900">Processamento concluído</h2>
           <p className="text-gray-500 mt-1">{relatorio.autor} · {relatorio.processo}</p>
         </div>
-        <a
-          href={relatorio.download_url}
-          className="bg-blue-600 text-white px-5 py-2.5 rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center gap-2"
-        >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-          </svg>
-          Baixar organizado
-        </a>
+        <div className="flex items-center gap-3">
+          {driveUrl ? (
+            <a
+              href={driveUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="bg-green-600 text-white px-5 py-2.5 rounded-lg font-medium hover:bg-green-700 transition-colors flex items-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+              Abrir no Drive
+            </a>
+          ) : driveConectado ? (
+            <button
+              onClick={enviarParaDrive}
+              disabled={driveEnviando}
+              className="bg-green-600 text-white px-5 py-2.5 rounded-lg font-medium hover:bg-green-700 transition-colors flex items-center gap-2 disabled:opacity-50"
+            >
+              {driveEnviando ? (
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M7.71 3.5L1.15 15l4.58 7.5h6.56l-4.58-7.5L14.27 3.5H7.71zm8.56 0l-6.56 11 4.58 7.5h6.56l-4.58-7.5L22.83 3.5h-6.56z" />
+                </svg>
+              )}
+              {driveEnviando ? 'Enviando...' : 'Enviar pro Drive'}
+            </button>
+          ) : (
+            <button
+              onClick={conectarDrive}
+              className="bg-white border border-gray-300 text-gray-700 px-5 py-2.5 rounded-lg font-medium hover:bg-gray-50 transition-colors flex items-center gap-2"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M7.71 3.5L1.15 15l4.58 7.5h6.56l-4.58-7.5L14.27 3.5H7.71zm8.56 0l-6.56 11 4.58 7.5h6.56l-4.58-7.5L22.83 3.5h-6.56z" />
+              </svg>
+              Conectar Drive
+            </button>
+          )}
+          <a
+            href={relatorio.download_url}
+            className="bg-blue-600 text-white px-5 py-2.5 rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center gap-2"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            Baixar ZIP
+          </a>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
