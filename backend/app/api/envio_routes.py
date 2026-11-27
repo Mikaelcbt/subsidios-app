@@ -24,6 +24,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
+from ..core.admin import registrar_envio
 from ..core.auth import get_current_user
 from ..core import drive_escritorio
 from ..core.drive_escritorio import DriveEscritorio, DriveErro, modo_configurado
@@ -238,10 +239,15 @@ async def subir_item(envio_id: str, item_id: str, user: dict = Depends(get_curre
                 file_id = await drive.enviar_arquivo(caminho, nome, destino["subsidios_id"])
                 status = "enviado"
     except DriveErro as e:
+        envio = _abrir(envio_id, user)
+        envio.estado.setdefault("enviados", {})[item_id] = {"status": "erro", "msg": str(e)}
+        envio.salvar()
+        await registrar_envio(envio_id, user, envio.estado, len(envio.itens_para_subir()))
         raise HTTPException(status_code=502, detail=str(e))
 
     # Recarrega antes de gravar: outros uploads do mesmo envio rodam em paralelo
     envio = _abrir(envio_id, user)
     envio.estado.setdefault("enviados", {})[item_id] = {"status": status, "file_id": file_id}
     envio.salvar()
+    await registrar_envio(envio_id, user, envio.estado, len(envio.itens_para_subir()))
     return {"item_id": item_id, "nome": nome, "status": status, "file_id": file_id}

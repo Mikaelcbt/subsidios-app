@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from './lib/supabase'
 import { Auth } from './components/Auth'
 import { EnvioDrive, type DriveStatus } from './components/EnvioDrive'
+import { Admin } from './components/Admin'
 import type { Session } from '@supabase/supabase-js'
 
 interface DocumentoConferencia {
@@ -36,7 +37,7 @@ interface Relatorio {
 }
 
 type Etapa = 'upload' | 'processando' | 'resultado'
-type Aba = 'envio' | 'conferencia'
+type Aba = 'envio' | 'conferencia' | 'admin'
 
 function App() {
   const [session, setSession] = useState<Session | null>(null)
@@ -54,6 +55,7 @@ function App() {
   const [driveUrl, setDriveUrl] = useState('')
   const [aba, setAba] = useState<Aba>('envio')
   const [driveEscritorio, setDriveEscritorio] = useState<DriveStatus | null>(null)
+  const [ehAdmin, setEhAdmin] = useState(false)
 
   const authHeaders = (): Record<string, string> => {
     const token = session?.access_token
@@ -129,10 +131,18 @@ function App() {
     } catch {}
   }
 
+  const checkAdmin = async () => {
+    try {
+      const res = await fetch('/api/me', { headers: authHeaders() })
+      if (res.ok) setEhAdmin((await res.json()).admin === true)
+    } catch {}
+  }
+
   useEffect(() => {
     if (session) {
       checkDriveStatus()
       checkDriveEscritorio()
+      checkAdmin()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.access_token])
@@ -253,6 +263,7 @@ function App() {
           {([
             ['envio', 'Enviar pro Drive'],
             ['conferencia', 'Conferência (organizar por contrato)'],
+            ...(ehAdmin ? [['admin', 'Admin']] : []),
           ] as [Aba, string][]).map(([id, label]) => (
             <button
               key={id}
@@ -269,6 +280,8 @@ function App() {
         <div className={aba === 'envio' ? '' : 'hidden'}>
           <EnvioDrive token={session.access_token} driveStatus={driveEscritorio} />
         </div>
+
+        {aba === 'admin' && ehAdmin && <Admin token={session.access_token} />}
 
         {aba === 'conferencia' && etapa === 'upload' && (
           <FormUpload
