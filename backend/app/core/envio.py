@@ -43,8 +43,51 @@ EXTENSOES_AUDIO = {
 }
 
 
+EXTENSOES_AUDIO |= {".gsm", ".vox", ".mka", ".ra", ".rm", ".mp2", ".m4b", ".asf", ".vob"}
+
+# Extensões que com certeza não são mídia: nem abre o arquivo pra olhar
+EXTENSOES_DOCUMENTO = {
+    ".pdf", ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tif", ".tiff", ".heic", ".webp",
+    ".doc", ".docx", ".xls", ".xlsx", ".csv", ".txt", ".rtf", ".odt", ".ods",
+    ".html", ".htm", ".xml", ".json", ".eml", ".msg", ".zip", ".rar", ".7z",
+}
+
+
 def eh_audio(nome: str) -> bool:
     return Path(nome).suffix.lower() in EXTENSOES_AUDIO
+
+
+def parece_midia(caminho: Path) -> bool:
+    """Áudio/vídeo pela extensão ou, se a extensão for estranha ou faltar, pelo conteúdo."""
+    ext = caminho.suffix.lower()
+    if ext in EXTENSOES_AUDIO:
+        return True
+    if ext in EXTENSOES_DOCUMENTO:
+        return False
+    import mimetypes
+    tipo, _ = mimetypes.guess_type(caminho.name)
+    if tipo and (tipo.startswith("audio/") or tipo.startswith("video/")):
+        return True
+    try:
+        with open(caminho, "rb") as f:
+            h = f.read(16)
+    except OSError:
+        return False
+    if len(h) < 4:
+        return False
+    if h[:3] == b"ID3" or h[:4] in (b"OggS", b"fLaC", b"\x1aE\xdf\xa3", b".snd", b"FORM", b".RMF"):
+        return True
+    if h[:5] == b"#!AMR":
+        return True
+    if h[:4] == b"RIFF" and h[8:12] in (b"WAVE", b"AVI "):
+        return True
+    if h[:4] == b"\x30\x26\xb2\x75":  # ASF (wma/wmv)
+        return True
+    if h[4:8] == b"ftyp" and h[8:12] not in (b"heic", b"heix", b"mif1", b"msf1", b"avif"):
+        return True  # mp4, m4a, mov, 3gp
+    if h[0] == 0xFF and (h[1] & 0xE0) == 0xE0 and (h[1] & 0x06) != 0:
+        return True  # frame MPEG (mp3 sem ID3) e ADTS (aac)
+    return False
 
 MESES = {
     "JAN": 1, "FEV": 2, "MAR": 3, "ABR": 4, "MAI": 5, "JUN": 6,
@@ -192,7 +235,7 @@ class Envio:
                 "tamanho": arq.stat().st_size,
                 "parece_fatura": bool(REGEX_FATURA.search(arq.name)) and arq.suffix.lower() == ".pdf",
                 "corrompido": arq.name.startswith("CORROMPIDO_"),
-                "audio": eh_audio(arq.name),
+                "audio": parece_midia(arq),
             }
             self.estado["documentos"].append(item)
             novos.append(item)
@@ -338,8 +381,8 @@ class Envio:
                 "id": d["id"],
                 "nome": d["nome"],
                 "tamanho": d["tamanho"],
-                "tipo": "audio" if eh_audio(d["nome"]) else "documento",
-                "subpasta": NOME_PASTA_AUDIOS if eh_audio(d["nome"]) else None,
+                "tipo": "audio" if (d.get("audio") or eh_audio(d["nome"])) else "documento",
+                "subpasta": NOME_PASTA_AUDIOS if (d.get("audio") or eh_audio(d["nome"])) else None,
             }
             for d in self.estado["documentos"]
         ]

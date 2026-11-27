@@ -441,3 +441,24 @@ def test_sem_audio_nao_cria_subpasta(fake, tmp_path, monkeypatch):
     for i in r["itens_para_subir"]:
         c.post(f"/api/envios/{eid}/itens/{i['id']}/subir", headers=h)
     assert [f["name"] for f in fake.filhos(r["destino"]["subsidios_id"])] == ["Contrato 1.pdf"]
+
+
+@pytest.mark.parametrize(
+    "nome,conteudo,esperado",
+    [
+        ("gravacao", b"ID3\x03\x00" + b"\x00" * 20, True),
+        ("ligacao.dat", b"RIFF\x00\x00\x00\x00WAVEfmt " + b"\x00" * 8, True),
+        ("audio.bin", b"\xff\xfb\x90\x64" + b"\x00" * 20, True),
+        ("zap", b"OggS" + b"\x00" * 20, True),
+        ("video", b"\x00\x00\x00\x18ftypmp42" + b"\x00" * 8, True),
+        ("foto.HEIC", b"\x00\x00\x00\x18ftypheic" + b"\x00" * 8, False),
+        ("CHAMADA.WAV", b"qualquer", True),
+        ("Contrato 1.pdf", b"%PDF-1.4", False),
+        ("foto.jpg", b"\xff\xd8\xff\xe0" + b"\x00" * 12, False),
+        ("sem_ext_texto", b"ola mundo nada demais", False),
+    ],
+)
+def test_parece_midia(tmp_path, nome, conteudo, esperado):
+    p = tmp_path / nome
+    p.write_bytes(conteudo)
+    assert envio_mod.parece_midia(p) is esperado
