@@ -390,3 +390,53 @@ def test_limpar_tudo(tmp_path, monkeypatch):
     assert e.estado["faturas_pdf"] is None and not e.pdf_faturas.exists()
     assert list(e.dir_documentos.iterdir()) == [] and list(e.dir_faturas.iterdir()) == []
     assert e.itens_para_subir() == []
+
+
+def test_audios_vao_pra_subpasta(fake, tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+    import app.api.envio_routes as rotas
+    from app.main import app
+
+    monkeypatch.setattr(envio_mod, "ENVIOS_DIR", tmp_path / "envios")
+    monkeypatch.setattr(rotas, "DriveEscritorio", lambda: _drive(fake))
+    c = TestClient(app)
+    h = {"Authorization": "Bearer x"}
+    eid = c.post("/api/envios", headers=h).json()["envio_id"]
+    zbuf = io.BytesIO()
+    with zipfile.ZipFile(zbuf, "w") as z:
+        z.writestr("ligacao 1.mp3", b"ID3")
+        z.writestr("audio whatsapp.OPUS", b"OggS")
+    r = c.post(f"/api/envios/{eid}/documentos", headers=h, files=[
+        ("arquivos", ("Contrato 1.pdf", _pdf(1), "application/pdf")),
+        ("arquivos", ("audios.zip", zbuf.getvalue(), "application/zip")),
+    ]).json()
+    assert sorted(d["nome"] for d in r["documentos"] if d["audio"]) == ["audio whatsapp.OPUS", "ligacao 1.mp3"]
+
+    dados = {"autor": "Tales", "processo": "4002609-37.2026.8.26.0272"}
+    r = c.post(f"/api/envios/{eid}/pasta", headers=h, json=dados).json()
+    for i in r["itens_para_subir"]:
+        assert c.post(f"/api/envios/{eid}/itens/{i['id']}/subir", headers=h).json()["status"] == "enviado"
+
+    sub = r["destino"]["subsidios_id"]
+    filhos = {f["name"]: f for f in fake.filhos(sub)}
+    assert set(filhos) == {"Contrato 1.pdf", "ÁUDIOS"}
+    assert sorted(f["name"] for f in fake.filhos(filhos["ÁUDIOS"]["id"])) == ["audio whatsapp.OPUS", "ligacao 1.mp3"]
+    assert len([f for f in fake.filhos(sub) if f["name"] == "ÁUDIOS"]) == 1
+
+
+def test_sem_audio_nao_cria_subpasta(fake, tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+    import app.api.envio_routes as rotas
+    from app.main import app
+
+    monkeypatch.setattr(envio_mod, "ENVIOS_DIR", tmp_path / "envios")
+    monkeypatch.setattr(rotas, "DriveEscritorio", lambda: _drive(fake))
+    c = TestClient(app)
+    h = {"Authorization": "Bearer x"}
+    eid = c.post("/api/envios", headers=h).json()["envio_id"]
+    c.post(f"/api/envios/{eid}/documentos", headers=h,
+           files=[("arquivos", ("Contrato 1.pdf", _pdf(1), "application/pdf"))])
+    r = c.post(f"/api/envios/{eid}/pasta", headers=h, json={"autor": "Tales", "processo": "1234567-00.2026.8.26.0001"}).json()
+    for i in r["itens_para_subir"]:
+        c.post(f"/api/envios/{eid}/itens/{i['id']}/subir", headers=h)
+    assert [f["name"] for f in fake.filhos(r["destino"]["subsidios_id"])] == ["Contrato 1.pdf"]

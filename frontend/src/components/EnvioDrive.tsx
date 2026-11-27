@@ -6,6 +6,7 @@ interface Documento {
   tamanho: number
   parece_fatura: boolean
   corrompido: boolean
+  audio?: boolean
 }
 
 interface Fatura {
@@ -43,6 +44,7 @@ interface EnvioDados {
   ordem_faturas: 'data' | 'nome' | 'manual'
   faturas_pdf: { nome: string; paginas: number; tamanho: number } | null
   itens_para_subir: ItemSubir[]
+  nome_pasta_audios?: string
   destino: Destino | null
 }
 
@@ -372,13 +374,14 @@ export function EnvioDrive({ token, driveStatus }: { token: string; driveStatus:
       {/* 2. Documentos */}
       <Secao numero={2} titulo="Documentos e ZIPs do Pan">
         <p className="text-sm text-gray-500 -mt-2">
-          Os ZIPs são abertos aqui e tudo vai solto pra SUBSÍDIOS, com o nome original.
+          Os ZIPs são abertos aqui e tudo vai solto pra SUBSÍDIOS, com o nome original. Áudios vão pra subpasta{' '}
+          {envio?.nome_pasta_audios ?? 'ÁUDIOS'} dentro de SUBSÍDIOS.
         </p>
         <Dropzone
           id="docs-input"
           texto="Arraste os documentos e ZIPs aqui"
-          subtexto="ZIP, PDF, imagens"
-          accept=".zip,.pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx,.txt"
+          subtexto="ZIP, PDF, imagens, áudios"
+          accept=".zip,.pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx,.txt,.mp3,.ogg,.oga,.opus,.wav,.m4a,.aac,.amr,.wma,.flac,.3gp,.webm,audio/*"
           onFiles={enviarDocumentos}
           carregando={carregandoDocs}
         />
@@ -405,7 +408,7 @@ export function EnvioDrive({ token, driveStatus }: { token: string; driveStatus:
               <LinhaArquivo
                 key={d.id}
                 nome={d.nome}
-                detalhe={tamanhoFmt(d.tamanho)}
+                detalhe={d.audio ? `${tamanhoFmt(d.tamanho)} · vai pra ${envio.nome_pasta_audios ?? 'ÁUDIOS'}` : tamanhoFmt(d.tamanho)}
                 alerta={d.corrompido ? 'ZIP corrompido, vai subir como está' : undefined}
                 status={status[d.id]}
                 onRemover={subindo ? undefined : () => removerDocumento(d.id)}

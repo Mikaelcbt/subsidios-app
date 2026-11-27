@@ -32,6 +32,17 @@ ARQUIVOS_IGNORADOS = {".ds_store", "thumbs.db", "desktop.ini"}
 
 REGEX_FATURA = re.compile(r"FATURA", re.IGNORECASE)
 
+# Áudios vão pra uma subpasta dentro de SUBSÍDIOS (só criada se tiver áudio)
+NOME_PASTA_AUDIOS = os.getenv("NOME_PASTA_AUDIOS", "ÁUDIOS")
+EXTENSOES_AUDIO = {
+    ".mp3", ".ogg", ".oga", ".opus", ".wav", ".m4a", ".aac", ".amr", ".wma",
+    ".flac", ".3gp", ".3ga", ".aif", ".aiff", ".caf", ".webm", ".mpga",
+}
+
+
+def eh_audio(nome: str) -> bool:
+    return Path(nome).suffix.lower() in EXTENSOES_AUDIO
+
 MESES = {
     "JAN": 1, "FEV": 2, "MAR": 3, "ABR": 4, "MAI": 5, "JUN": 6,
     "JUL": 7, "AGO": 8, "SET": 9, "OUT": 10, "NOV": 11, "DEZ": 12,
@@ -178,6 +189,7 @@ class Envio:
                 "tamanho": arq.stat().st_size,
                 "parece_fatura": bool(REGEX_FATURA.search(arq.name)) and arq.suffix.lower() == ".pdf",
                 "corrompido": arq.name.startswith("CORROMPIDO_"),
+                "audio": eh_audio(arq.name),
             }
             self.estado["documentos"].append(item)
             novos.append(item)
@@ -317,14 +329,20 @@ class Envio:
     # -- saída -------------------------------------------------------------
 
     def itens_para_subir(self) -> list[dict]:
-        """Tudo que vai pra SUBSÍDIOS: documentos soltos + FATURAS.pdf."""
+        """Tudo que vai pra SUBSÍDIOS: documentos soltos + FATURAS.pdf (áudios na subpasta)."""
         itens = [
-            {"id": d["id"], "nome": d["nome"], "tamanho": d["tamanho"], "tipo": "documento"}
+            {
+                "id": d["id"],
+                "nome": d["nome"],
+                "tamanho": d["tamanho"],
+                "tipo": "audio" if eh_audio(d["nome"]) else "documento",
+                "subpasta": NOME_PASTA_AUDIOS if eh_audio(d["nome"]) else None,
+            }
             for d in self.estado["documentos"]
         ]
         if self.estado.get("faturas_pdf"):
             fp = self.estado["faturas_pdf"]
-            itens.append({"id": "faturas", "nome": fp["nome"], "tamanho": fp["tamanho"], "tipo": "faturas"})
+            itens.append({"id": "faturas", "nome": fp["nome"], "tamanho": fp["tamanho"], "tipo": "faturas", "subpasta": None})
         return itens
 
     def caminho_item(self, item_id: str) -> tuple[Path, str]:
@@ -345,6 +363,7 @@ class Envio:
             "ordem_faturas": self.estado.get("ordem_faturas", "data"),
             "faturas_pdf": self.estado.get("faturas_pdf"),
             "itens_para_subir": self.itens_para_subir(),
+            "nome_pasta_audios": NOME_PASTA_AUDIOS,
             "destino": self.estado.get("destino"),
             "enviados": self.estado.get("enviados", {}),
         }
