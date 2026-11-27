@@ -1,6 +1,7 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from './lib/supabase'
 import { Auth } from './components/Auth'
+import { EnvioDrive, type DriveStatus } from './components/EnvioDrive'
 import type { Session } from '@supabase/supabase-js'
 
 interface DocumentoConferencia {
@@ -35,6 +36,7 @@ interface Relatorio {
 }
 
 type Etapa = 'upload' | 'processando' | 'resultado'
+type Aba = 'envio' | 'conferencia'
 
 function App() {
   const [session, setSession] = useState<Session | null>(null)
@@ -50,8 +52,10 @@ function App() {
   const [driveConectado, setDriveConectado] = useState(false)
   const [driveEnviando, setDriveEnviando] = useState(false)
   const [driveUrl, setDriveUrl] = useState('')
+  const [aba, setAba] = useState<Aba>('envio')
+  const [driveEscritorio, setDriveEscritorio] = useState<DriveStatus | null>(null)
 
-  const authHeaders = () => {
+  const authHeaders = (): Record<string, string> => {
     const token = session?.access_token
     return token ? { 'Authorization': `Bearer ${token}` } : {}
   }
@@ -118,9 +122,20 @@ function App() {
     return () => subscription.unsubscribe()
   }, [])
 
+  const checkDriveEscritorio = async () => {
+    try {
+      const res = await fetch('/api/envios/drive/status', { headers: authHeaders() })
+      if (res.ok) setDriveEscritorio(await res.json())
+    } catch {}
+  }
+
   useEffect(() => {
-    if (session) checkDriveStatus()
-  }, [session])
+    if (session) {
+      checkDriveStatus()
+      checkDriveEscritorio()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.access_token])
 
   const logout = async () => {
     await supabase.auth.signOut()
@@ -141,12 +156,12 @@ function App() {
     return <Auth onAuth={() => supabase.auth.getSession().then(({ data: { session } }) => setSession(session))} />
   }
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
+  const handleDrop = (e: React.DragEvent) => {
     e.preventDefault()
     setDragAtivo(false)
     const files = Array.from(e.dataTransfer.files)
     setArquivos(prev => [...prev, ...files])
-  }, [])
+  }
 
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -221,24 +236,7 @@ function App() {
             <h1 className="text-lg font-semibold text-gray-900">Subsídios Processuais</h1>
           </div>
           <div className="flex items-center gap-4">
-            {driveConectado ? (
-              <span className="text-xs text-green-600 bg-green-50 px-2 py-1 rounded-full flex items-center gap-1">
-                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-                Drive conectado
-              </span>
-            ) : (
-              <button
-                onClick={conectarDrive}
-                className="text-xs text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5"
-              >
-                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M7.71 3.5L1.15 15l4.58 7.5h6.56l-4.58-7.5L14.27 3.5H7.71zm8.56 0l-6.56 11 4.58 7.5h6.56l-4.58-7.5L22.83 3.5h-6.56z" />
-                </svg>
-                Conectar Drive
-              </button>
-            )}
+            <StatusDriveEscritorio status={driveEscritorio} />
             <span className="text-sm text-gray-500">{session.user.user_metadata?.nome || session.user.email}</span>
             <button
               onClick={logout}
@@ -251,7 +249,28 @@ function App() {
       </header>
 
       <main className="max-w-5xl mx-auto px-6 py-8">
-        {etapa === 'upload' && (
+        <div className="flex gap-1 mb-6 border-b border-gray-200">
+          {([
+            ['envio', 'Enviar pro Drive'],
+            ['conferencia', 'Conferência (organizar por contrato)'],
+          ] as [Aba, string][]).map(([id, label]) => (
+            <button
+              key={id}
+              onClick={() => setAba(id)}
+              className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                aba === id ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <div className={aba === 'envio' ? '' : 'hidden'}>
+          <EnvioDrive token={session.access_token} driveStatus={driveEscritorio} />
+        </div>
+
+        {aba === 'conferencia' && etapa === 'upload' && (
           <FormUpload
             autor={autor}
             setAutor={setAutor}
@@ -270,9 +289,9 @@ function App() {
           />
         )}
 
-        {etapa === 'processando' && <Processando />}
+        {aba === 'conferencia' && etapa === 'processando' && <Processando />}
 
-        {etapa === 'resultado' && relatorio && (
+        {aba === 'conferencia' && etapa === 'resultado' && relatorio && (
           <Resultado
             relatorio={relatorio}
             novoProcessamento={novoProcessamento}
@@ -596,6 +615,24 @@ function Resultado({ relatorio, novoProcessamento, driveConectado, driveEnviando
         Novo processamento
       </button>
     </div>
+  )
+}
+
+function StatusDriveEscritorio({ status }: { status: DriveStatus | null }) {
+  if (!status) return null
+  if (!status.configurado) {
+    return <span className="text-xs text-amber-700 bg-amber-50 px-2 py-1 rounded-full">Drive do escritório não configurado</span>
+  }
+  if (status.erro) {
+    return <span className="text-xs text-red-700 bg-red-50 px-2 py-1 rounded-full" title={status.erro}>Drive do escritório com erro</span>
+  }
+  return (
+    <span
+      className="text-xs text-green-700 bg-green-50 px-2 py-1 rounded-full"
+      title={status.faixas.map(f => f.nome).join('\n')}
+    >
+      Drive do escritório ok · {status.faixas.length} drives
+    </span>
   )
 }
 

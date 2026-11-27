@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .api.routes import router
 from .api.drive_routes import router as drive_router
+from .api.envio_routes import router as envio_router
 
 app = FastAPI(
     title="Subsídios Processuais",
@@ -27,6 +28,7 @@ app.add_middleware(
 # API routes primeiro
 app.include_router(router)
 app.include_router(drive_router)
+app.include_router(envio_router)
 
 # Servir frontend estático (build do React)
 static_dir = Path(__file__).parent.parent / "static"
