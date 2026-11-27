@@ -46,6 +46,7 @@ export function Auth({ onAuth }: { onAuth: () => void }) {
       password: senha,
       options: {
         data: { nome },
+        emailRedirectTo: window.location.origin,
       },
     })
 
@@ -63,7 +64,9 @@ export function Auth({ onAuth }: { onAuth: () => void }) {
     setErro('')
     setLoading(true)
 
-    const { error } = await supabase.auth.resetPasswordForEmail(email)
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin,
+    })
 
     setLoading(false)
     if (error) {
