@@ -406,11 +406,12 @@ def test_audios_vao_pra_subpasta(fake, tmp_path, monkeypatch):
     with zipfile.ZipFile(zbuf, "w") as z:
         z.writestr("ligacao 1.mp3", b"ID3")
         z.writestr("audio whatsapp.OPUS", b"OggS")
+        z.writestr("video chamada.MP4", b"ftyp")
     r = c.post(f"/api/envios/{eid}/documentos", headers=h, files=[
         ("arquivos", ("Contrato 1.pdf", _pdf(1), "application/pdf")),
         ("arquivos", ("audios.zip", zbuf.getvalue(), "application/zip")),
     ]).json()
-    assert sorted(d["nome"] for d in r["documentos"] if d["audio"]) == ["audio whatsapp.OPUS", "ligacao 1.mp3"]
+    assert sorted(d["nome"] for d in r["documentos"] if d["audio"]) == ["audio whatsapp.OPUS", "ligacao 1.mp3", "video chamada.MP4"]
 
     dados = {"autor": "Tales", "processo": "4002609-37.2026.8.26.0272"}
     r = c.post(f"/api/envios/{eid}/pasta", headers=h, json=dados).json()
@@ -420,7 +421,7 @@ def test_audios_vao_pra_subpasta(fake, tmp_path, monkeypatch):
     sub = r["destino"]["subsidios_id"]
     filhos = {f["name"]: f for f in fake.filhos(sub)}
     assert set(filhos) == {"Contrato 1.pdf", "ÁUDIOS"}
-    assert sorted(f["name"] for f in fake.filhos(filhos["ÁUDIOS"]["id"])) == ["audio whatsapp.OPUS", "ligacao 1.mp3"]
+    assert sorted(f["name"] for f in fake.filhos(filhos["ÁUDIOS"]["id"])) == ["audio whatsapp.OPUS", "ligacao 1.mp3", "video chamada.MP4"]
     assert len([f for f in fake.filhos(sub) if f["name"] == "ÁUDIOS"]) == 1
 
 

@@ -374,14 +374,14 @@ export function EnvioDrive({ token, driveStatus }: { token: string; driveStatus:
       {/* 2. Documentos */}
       <Secao numero={2} titulo="Documentos e ZIPs do Pan">
         <p className="text-sm text-gray-500 -mt-2">
-          Os ZIPs são abertos aqui e tudo vai solto pra SUBSÍDIOS, com o nome original. Áudios vão pra subpasta{' '}
+          Os ZIPs são abertos aqui e tudo vai solto pra SUBSÍDIOS, com o nome original. Áudios e vídeos vão pra subpasta{' '}
           {envio?.nome_pasta_audios ?? 'ÁUDIOS'} dentro de SUBSÍDIOS.
         </p>
         <Dropzone
           id="docs-input"
           texto="Arraste os documentos e ZIPs aqui"
-          subtexto="ZIP, PDF, imagens, áudios"
-          accept=".zip,.pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx,.txt,.mp3,.ogg,.oga,.opus,.wav,.m4a,.aac,.amr,.wma,.flac,.3gp,.webm,audio/*"
+          subtexto="ZIP, PDF, imagens, áudios, vídeos"
+          accept=".zip,.pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx,.txt,.mp3,.ogg,.oga,.opus,.wav,.m4a,.aac,.amr,.wma,.flac,.3gp,.webm,.mp4,.m4v,.mov,.avi,.mkv,.wmv,.mpg,.mpeg,audio/*,video/*"
           onFiles={enviarDocumentos}
           carregando={carregandoDocs}
         />

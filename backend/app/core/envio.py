@@ -32,11 +32,14 @@ ARQUIVOS_IGNORADOS = {".ds_store", "thumbs.db", "desktop.ini"}
 
 REGEX_FATURA = re.compile(r"FATURA", re.IGNORECASE)
 
-# Áudios vão pra uma subpasta dentro de SUBSÍDIOS (só criada se tiver áudio)
+# Áudios e vídeos vão pra uma subpasta dentro de SUBSÍDIOS (só criada se tiver áudio)
 NOME_PASTA_AUDIOS = os.getenv("NOME_PASTA_AUDIOS", "ÁUDIOS")
 EXTENSOES_AUDIO = {
     ".mp3", ".ogg", ".oga", ".opus", ".wav", ".m4a", ".aac", ".amr", ".wma",
     ".flac", ".3gp", ".3ga", ".aif", ".aiff", ".caf", ".webm", ".mpga",
+    # Vídeos vão pra mesma pasta
+    ".mp4", ".m4v", ".mov", ".avi", ".mkv", ".wmv", ".mpg", ".mpeg", ".3g2",
+    ".flv", ".ts", ".mts",
 }
 
 
