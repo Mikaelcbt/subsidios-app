@@ -25,6 +25,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from ..core.auth import get_current_user
+from ..core import drive_escritorio
 from ..core.drive_escritorio import DriveEscritorio, DriveErro, modo_configurado
 from ..core.envio import Envio, EnvioErro
 
@@ -85,6 +86,7 @@ async def drive_status(user: dict = Depends(get_current_user)):
                 "configurado": True,
                 "modo": modo,
                 "conta": drive.email,
+                "teste": bool(drive_escritorio.RAIZ_TESTE_ID),
                 "faixas": [{"nome": f.nome, "de": f.de, "ate": f.ate} for f in faixas],
                 "erro": None if faixas else "A conta do app não participa de nenhum Drive de faixa (ex.: CÍVEL- Pan A - C).",
             }

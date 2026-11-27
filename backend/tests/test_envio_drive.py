@@ -348,3 +348,27 @@ def test_rotas_fluxo_completo(fake, tmp_path, monkeypatch):
     assert again["status"] == "ja_existia"
     nomes = sorted(f["name"] for f in fake.filhos(r["destino"]["subsidios_id"]))
     assert nomes == ["Contrato 9.pdf", "FATURAS.pdf"]
+
+
+def test_modo_teste_meu_drive(monkeypatch):
+    import app.core.drive_escritorio as de
+    de._cache_faixas = (0.0, [])
+    f = DriveFalso()
+    raiz = f.add("SUBSIDIOS TESTE", "meu-drive", FOLDER)
+    faixa = f.add("CÍVEL- Pan T - V", raiz, FOLDER)
+    letra_t = f.add("T", faixa, FOLDER)
+    f.add("anotacoes.txt", raiz)
+    monkeypatch.setattr(de, "RAIZ_TESTE_ID", raiz)
+
+    async def run():
+        async with _drive(f) as d:
+            faixas = await d.faixas(usar_cache=False)
+            dest = await d.garantir_destino("Tales de Carvalho", "4002609-37.2026.8.26.0272")
+            return faixas, dest
+
+    faixas, dest = asyncio.run(run())
+    assert [(x.nome, x.drive_id) for x in faixas] == [("CÍVEL- Pan T - V", None)]
+    assert dest.drive_id is None
+    assert f.arquivos[dest.pasta_id]["parents"] == [letra_t]
+    assert f.arquivos[dest.subsidios_id]["name"] == "SUBSÍDIOS"
+    de._cache_faixas = (0.0, [])

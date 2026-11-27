@@ -57,6 +57,7 @@ export interface DriveStatus {
   configurado: boolean
   modo: string | null
   conta?: string | null
+  teste?: boolean
   faixas: { nome: string; de: string; ate: string }[]
   erro: string | null
 }

@@ -41,6 +41,10 @@ NOME_SUBPASTA = "SUBSÍDIOS"
 # Só Drives cujo nome contém esse texto entram no mapa de faixas (vazio = todos).
 FILTRO_NOME_DRIVE = os.getenv("DRIVE_FAIXAS_FILTRO", "PAN")
 
+# Modo teste: ID de uma pasta comum (ex.: no Meu Drive) que imita os Drives compartilhados.
+# Dentro dela ficam pastas "CÍVEL- Pan T - V" etc., cada uma com as pastas de letra.
+RAIZ_TESTE_ID = os.getenv("DRIVE_RAIZ_TESTE_ID", "").strip()
+
 # Faixa no fim do nome do Drive: "CÍVEL- Pan T - V" -> T, V
 REGEX_FAIXA = re.compile(r"([A-Z])\s*-\s*([A-Z])\s*$")
 
@@ -220,10 +224,11 @@ _credenciais = Credenciais()
 
 @dataclass
 class Faixa:
-    drive_id: str
+    raiz_id: str                 # ID do Drive compartilhado (ou da pasta da faixa no modo teste)
     nome: str
     de: str
     ate: str
+    drive_id: Optional[str]      # Drive compartilhado onde buscar; None = Meu Drive (modo teste)
 
     def cobre(self, letra: str) -> bool:
         return self.de <= letra <= self.ate
@@ -232,7 +237,7 @@ class Faixa:
 @dataclass
 class Destino:
     """Onde os arquivos de um processo vão parar."""
-    drive_id: str
+    drive_id: Optional[str]
     drive_nome: str
     letra: str
     letra_id: str
@@ -313,18 +318,19 @@ class DriveEscritorio:
             raise DriveErro(_mensagem_erro(resp))
         return resp
 
-    async def _listar(self, q: str, drive_id: str, campos: str = "id,name,size") -> list[dict]:
+    async def _listar(self, q: str, drive_id: Optional[str], campos: str = "id,name,size") -> list[dict]:
         itens: list[dict] = []
         page_token = None
         while True:
             params = {
                 "q": q,
-                "corpora": "drive",
-                "driveId": drive_id,
                 "includeItemsFromAllDrives": "true",
                 "fields": f"nextPageToken,files({campos})",
                 "pageSize": "1000",
             }
+            if drive_id:
+                params["corpora"] = "drive"
+                params["driveId"] = drive_id
             if page_token:
                 params["pageToken"] = page_token
             dados = (await self._req("GET", f"{DRIVE_API}/files", params=params)).json()
@@ -342,7 +348,7 @@ class DriveEscritorio:
 
         drives: list[dict] = []
         page_token = None
-        while True:
+        while not RAIZ_TESTE_ID:
             params = {"pageSize": "100", "fields": "nextPageToken,drives(id,name)"}
             if page_token:
                 params["pageToken"] = page_token
@@ -351,6 +357,9 @@ class DriveEscritorio:
             page_token = dados.get("nextPageToken")
             if not page_token:
                 break
+
+        if RAIZ_TESTE_ID:
+            drives = await self._pastas_em(RAIZ_TESTE_ID, None)
 
         resultado: list[Faixa] = []
         filtro = normalizar(FILTRO_NOME_DRIVE)
@@ -361,7 +370,10 @@ class DriveEscritorio:
             m = REGEX_FAIXA.search(nome_norm)
             if not m:
                 continue
-            resultado.append(Faixa(drive_id=d["id"], nome=d["name"], de=m.group(1), ate=m.group(2)))
+            resultado.append(Faixa(
+                raiz_id=d["id"], nome=d["name"], de=m.group(1), ate=m.group(2),
+                drive_id=None if RAIZ_TESTE_ID else d["id"],
+            ))
 
         resultado.sort(key=lambda f: f.de)
         _cache_faixas = (time.time(), resultado)
@@ -384,7 +396,7 @@ class DriveEscritorio:
 
     # -- Pastas ------------------------------------------------------------
 
-    async def _pastas_em(self, parent_id: str, drive_id: str) -> list[dict]:
+    async def _pastas_em(self, parent_id: str, drive_id: Optional[str]) -> list[dict]:
         q = f"'{_q(parent_id)}' in parents and mimeType = '{FOLDER_MIME}' and trashed = false"
         return await self._listar(q, drive_id, campos="id,name")
 
@@ -407,7 +419,7 @@ class DriveEscritorio:
         letra = letra_inicial(autor)
         faixa = await self.faixa_da_letra(letra)
 
-        pastas_raiz = await self._pastas_em(faixa.drive_id, faixa.drive_id)
+        pastas_raiz = await self._pastas_em(faixa.raiz_id, faixa.drive_id)
         letra_pasta = next((p for p in pastas_raiz if normalizar(p["name"]) == letra), None)
         if not letra_pasta:
             raise DriveErro(f"Não achei a pasta da letra {letra} dentro de {faixa.nome}.")
@@ -456,7 +468,7 @@ class DriveEscritorio:
 
     # -- Arquivos ----------------------------------------------------------
 
-    async def arquivo_existente(self, nome: str, parent_id: str, drive_id: str) -> Optional[dict]:
+    async def arquivo_existente(self, nome: str, parent_id: str, drive_id: Optional[str]) -> Optional[dict]:
         q = (
             f"'{_q(parent_id)}' in parents and name = '{_q(nome)}' "
             f"and mimeType != '{FOLDER_MIME}' and trashed = false"
