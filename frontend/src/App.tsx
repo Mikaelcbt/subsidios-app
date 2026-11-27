@@ -631,7 +631,7 @@ function StatusDriveEscritorio({ status }: { status: DriveStatus | null }) {
       className="text-xs text-green-700 bg-green-50 px-2 py-1 rounded-full"
       title={status.faixas.map(f => f.nome).join('\n')}
     >
-      Drive do escritório ok · {status.faixas.length} drives
+      {status.teste ? 'Drive de TESTE' : 'Drive do escritório'} ok · {status.faixas.length} {status.teste ? 'faixas' : 'drives'}
     </span>
   )
 }
