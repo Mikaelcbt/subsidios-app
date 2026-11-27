@@ -135,6 +135,20 @@ async def adicionar_documentos(
     return envio.para_dict()
 
 
+@router.delete("/{envio_id}/documentos")
+async def limpar_documentos(envio_id: str, user: dict = Depends(get_current_user)):
+    envio = _abrir(envio_id, user)
+    envio.limpar_documentos()
+    return envio.para_dict()
+
+
+@router.delete("/{envio_id}/faturas")
+async def limpar_faturas(envio_id: str, user: dict = Depends(get_current_user)):
+    envio = _abrir(envio_id, user)
+    await asyncio.to_thread(envio.limpar_faturas)
+    return envio.para_dict()
+
+
 @router.delete("/{envio_id}/documentos/{doc_id}")
 async def remover_documento(envio_id: str, doc_id: str, user: dict = Depends(get_current_user)):
     envio = _abrir(envio_id, user)

@@ -187,6 +187,25 @@ export function EnvioDrive({ token, driveStatus }: { token: string; driveStatus:
     }
   }
 
+  const limparDocumentos = async () => {
+    if (!envio) return
+    const res = await fetch(`/api/envios/${envio.envio_id}/documentos`, { method: 'DELETE', headers })
+    if (res.ok) atualizar(await res.json())
+    else setErro(await lerErro(res, 'Não consegui limpar os documentos.'))
+  }
+
+  const limparFaturas = async () => {
+    if (!envio) return
+    setJuntando(true)
+    try {
+      const res = await fetch(`/api/envios/${envio.envio_id}/faturas`, { method: 'DELETE', headers })
+      if (res.ok) atualizar(await res.json())
+      else setErro(await lerErro(res, 'Não consegui limpar as faturas.'))
+    } finally {
+      setJuntando(false)
+    }
+  }
+
   const juntarFaturas = async () => {
     if (!faturasPendentes.length) return
     setErro('')
@@ -378,7 +397,10 @@ export function EnvioDrive({ token, driveStatus }: { token: string; driveStatus:
           </div>
         )}
         {envio && envio.documentos.length > 0 && (
-          <ListaArquivos titulo={`${envio.documentos.length} arquivos prontos`}>
+          <ListaArquivos
+            titulo={`${envio.documentos.length} arquivos prontos`}
+            onLimpar={subindo || envio.documentos.some(d => status[d.id]) ? undefined : limparDocumentos}
+          >
             {envio.documentos.map(d => (
               <LinhaArquivo
                 key={d.id}
@@ -408,7 +430,10 @@ export function EnvioDrive({ token, driveStatus }: { token: string; driveStatus:
         />
         {faturasPendentes.length > 0 && (
           <div className="space-y-2">
-            <ListaArquivos titulo={`${faturasPendentes.length} arquivos para juntar`}>
+            <ListaArquivos
+              titulo={`${faturasPendentes.length} arquivos para juntar`}
+              onLimpar={() => setFaturasPendentes([])}
+            >
               {faturasPendentes.map((f, i) => (
                 <LinhaArquivo
                   key={i}
@@ -453,6 +478,7 @@ export function EnvioDrive({ token, driveStatus }: { token: string; driveStatus:
                   <option value="nome">Ordem: nome do arquivo</option>
                   {envio.ordem_faturas === 'manual' && <option value="manual">Ordem: manual</option>}
                 </select>
+                {!faturasTravadas && <BotaoLimpar onLimpar={limparFaturas} />}
                 {envio.faturas_pdf && (
                   <button
                     onClick={verPdf}
@@ -656,12 +682,43 @@ function Dropzone({ id, texto, subtexto, accept, onFiles, carregando }: {
   )
 }
 
-function ListaArquivos({ titulo, children }: { titulo: string; children: React.ReactNode }) {
+function ListaArquivos({ titulo, onLimpar, children }: {
+  titulo: string; onLimpar?: () => void; children: React.ReactNode
+}) {
   return (
     <div>
-      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">{titulo}</p>
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">{titulo}</p>
+        {onLimpar && <BotaoLimpar onLimpar={onLimpar} />}
+      </div>
       <div className="space-y-1 max-h-80 overflow-y-auto">{children}</div>
     </div>
+  )
+}
+
+function BotaoLimpar({ onLimpar }: { onLimpar: () => void }) {
+  // Dois cliques: o primeiro pede confirmação e ela some sozinha em 4 segundos
+  const [confirmando, setConfirmando] = useState(false)
+  useEffect(() => {
+    if (!confirmando) return
+    const t = setTimeout(() => setConfirmando(false), 4000)
+    return () => clearTimeout(t)
+  }, [confirmando])
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        if (confirmando) {
+          setConfirmando(false)
+          onLimpar()
+        } else setConfirmando(true)
+      }}
+      className={`text-xs font-medium px-2 py-1 rounded-md transition-colors ${
+        confirmando ? 'bg-red-600 text-white hover:bg-red-700' : 'text-red-600 hover:bg-red-50'
+      }`}
+    >
+      {confirmando ? 'Clique de novo pra confirmar' : 'Limpar tudo'}
+    </button>
   )
 }
 

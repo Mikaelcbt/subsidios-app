@@ -372,3 +372,21 @@ def test_modo_teste_meu_drive(monkeypatch):
     assert f.arquivos[dest.pasta_id]["parents"] == [letra_t]
     assert f.arquivos[dest.subsidios_id]["name"] == "SUBSÍDIOS"
     de._cache_faixas = (0.0, [])
+
+
+def test_limpar_tudo(tmp_path, monkeypatch):
+    monkeypatch.setattr(envio_mod, "ENVIOS_DIR", tmp_path / "envios")
+    e = Envio.criar("u")
+    entrada = tmp_path / "in"
+    entrada.mkdir()
+    (entrada / "a.pdf").write_bytes(_pdf(1))
+    (entrada / "FATURA 01-2024.pdf").write_bytes(_pdf(2))
+    e.adicionar_documentos(entrada)
+    e.adicionar_faturas(entrada)
+    assert e.estado["documentos"] and e.estado["faturas_pdf"]
+    e.limpar_documentos()
+    e.limpar_faturas()
+    assert e.estado["documentos"] == [] and e.estado["faturas"] == []
+    assert e.estado["faturas_pdf"] is None and not e.pdf_faturas.exists()
+    assert list(e.dir_documentos.iterdir()) == [] and list(e.dir_faturas.iterdir()) == []
+    assert e.itens_para_subir() == []

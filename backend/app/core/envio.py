@@ -193,6 +193,21 @@ class Envio:
         self.estado["documentos"] = [d for d in docs if d["id"] != doc_id]
         self.salvar()
 
+    def limpar_documentos(self) -> None:
+        shutil.rmtree(self.dir_documentos, ignore_errors=True)
+        self.dir_documentos.mkdir(parents=True, exist_ok=True)
+        ids = {d["id"] for d in self.estado["documentos"]}
+        self.estado["documentos"] = []
+        self.estado["enviados"] = {k: v for k, v in self.estado.get("enviados", {}).items() if k not in ids}
+        self.salvar()
+
+    def limpar_faturas(self) -> None:
+        shutil.rmtree(self.dir_faturas, ignore_errors=True)
+        self.dir_faturas.mkdir(parents=True, exist_ok=True)
+        self.estado["faturas"] = []
+        self.estado.get("enviados", {}).pop("faturas", None)
+        self._juntar()
+
     def adicionar_faturas(self, entradas: Path) -> list[dict]:
         novos = []
         for arq in self._extrair(entradas, self.dir_faturas):
