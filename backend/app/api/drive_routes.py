@@ -19,7 +19,7 @@ from ..core.google_drive import (
 
 router = APIRouter(prefix="/api/drive", tags=["drive"])
 
-SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+SUPABASE_URL = os.getenv("SUPABASE_URL") or os.getenv("VITE_SUPABASE_URL", "")
 SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")
 OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR", "/tmp/subsidios-output"))
 APP_URL = os.getenv("APP_URL", "")
