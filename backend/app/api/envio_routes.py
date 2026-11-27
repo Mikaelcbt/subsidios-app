@@ -135,6 +135,20 @@ async def adicionar_documentos(
     return envio.para_dict()
 
 
+@router.delete("/{envio_id}/documentos")
+async def limpar_documentos(envio_id: str, user: dict = Depends(get_current_user)):
+    envio = _abrir(envio_id, user)
+    envio.limpar_documentos()
+    return envio.para_dict()
+
+
+@router.delete("/{envio_id}/faturas")
+async def limpar_faturas(envio_id: str, user: dict = Depends(get_current_user)):
+    envio = _abrir(envio_id, user)
+    await asyncio.to_thread(envio.limpar_faturas)
+    return envio.para_dict()
+
+
 @router.delete("/{envio_id}/documentos/{doc_id}")
 async def remover_documento(envio_id: str, doc_id: str, user: dict = Depends(get_current_user)):
     envio = _abrir(envio_id, user)
@@ -219,6 +233,21 @@ async def preparar_pasta(envio_id: str, body: DadosProcesso, user: dict = Depend
     return envio.para_dict()
 
 
+async def _subpasta(envio_id: str, user: dict, drive: DriveEscritorio, nome: str) -> str:
+    """ID da subpasta (ex.: ÁUDIOS) dentro de SUBSÍDIOS. Cria uma vez só por envio."""
+    lock = _locks_pasta.setdefault(f"{envio_id}:{nome}", asyncio.Lock())
+    async with lock:
+        envio = _abrir(envio_id, user)
+        destino = envio.estado["destino"]
+        subpastas = destino.setdefault("subpastas", {})
+        if nome not in subpastas:
+            subpastas[nome] = await drive.garantir_subpasta(nome, destino["subsidios_id"], destino["drive_id"])
+            envio = _abrir(envio_id, user)
+            envio.estado["destino"].setdefault("subpastas", {})[nome] = subpastas[nome]
+            envio.salvar()
+        return subpastas[nome]
+
+
 @router.post("/{envio_id}/itens/{item_id}/subir")
 async def subir_item(envio_id: str, item_id: str, user: dict = Depends(get_current_user)):
     envio = _abrir(envio_id, user)
@@ -229,14 +258,18 @@ async def subir_item(envio_id: str, item_id: str, user: dict = Depends(get_curre
         caminho, nome = envio.caminho_item(item_id)
     except EnvioErro as e:
         raise HTTPException(status_code=404, detail=str(e))
+    item = next((i for i in envio.itens_para_subir() if i["id"] == item_id), {})
 
     try:
         async with DriveEscritorio() as drive:
-            existente = await drive.arquivo_existente(nome, destino["subsidios_id"], destino["drive_id"])
+            pasta_id = destino["subsidios_id"]
+            if item.get("subpasta"):
+                pasta_id = await _subpasta(envio_id, user, drive, item["subpasta"])
+            existente = await drive.arquivo_existente(nome, pasta_id, destino["drive_id"])
             if existente:
                 status, file_id = "ja_existia", existente["id"]
             else:
-                file_id = await drive.enviar_arquivo(caminho, nome, destino["subsidios_id"])
+                file_id = await drive.enviar_arquivo(caminho, nome, pasta_id)
                 status = "enviado"
     except DriveErro as e:
         envio = _abrir(envio_id, user)

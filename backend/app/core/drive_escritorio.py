@@ -457,6 +457,14 @@ class DriveEscritorio:
 
         return destino
 
+    async def garantir_subpasta(self, nome: str, parent_id: str, drive_id: Optional[str]) -> str:
+        """Acha a subpasta pelo nome (sem ligar pra acento/caixa) ou cria."""
+        existentes = await self._pastas_em(parent_id, drive_id)
+        achada = next((p for p in existentes if normalizar(p["name"]) == normalizar(nome)), None)
+        if achada:
+            return achada["id"]
+        return await self.criar_pasta(nome, parent_id)
+
     async def garantir_destino(self, autor: str, processo: str) -> Destino:
         """Resolve e cria o que faltar (pasta do processo e SUBSÍDIOS)."""
         destino = await self.resolver_destino(autor, processo)

@@ -6,6 +6,7 @@ interface Documento {
   tamanho: number
   parece_fatura: boolean
   corrompido: boolean
+  audio?: boolean
 }
 
 interface Fatura {
@@ -43,6 +44,7 @@ interface EnvioDados {
   ordem_faturas: 'data' | 'nome' | 'manual'
   faturas_pdf: { nome: string; paginas: number; tamanho: number } | null
   itens_para_subir: ItemSubir[]
+  nome_pasta_audios?: string
   destino: Destino | null
 }
 
@@ -182,6 +184,25 @@ export function EnvioDrive({ token, driveStatus }: { token: string; driveStatus:
         body: JSON.stringify({ ids }),
       })
       if (res.ok) atualizar(await res.json())
+    } finally {
+      setJuntando(false)
+    }
+  }
+
+  const limparDocumentos = async () => {
+    if (!envio) return
+    const res = await fetch(`/api/envios/${envio.envio_id}/documentos`, { method: 'DELETE', headers })
+    if (res.ok) atualizar(await res.json())
+    else setErro(await lerErro(res, 'Não consegui limpar os documentos.'))
+  }
+
+  const limparFaturas = async () => {
+    if (!envio) return
+    setJuntando(true)
+    try {
+      const res = await fetch(`/api/envios/${envio.envio_id}/faturas`, { method: 'DELETE', headers })
+      if (res.ok) atualizar(await res.json())
+      else setErro(await lerErro(res, 'Não consegui limpar as faturas.'))
     } finally {
       setJuntando(false)
     }
@@ -353,13 +374,14 @@ export function EnvioDrive({ token, driveStatus }: { token: string; driveStatus:
       {/* 2. Documentos */}
       <Secao numero={2} titulo="Documentos e ZIPs do Pan">
         <p className="text-sm text-gray-500 -mt-2">
-          Os ZIPs são abertos aqui e tudo vai solto pra SUBSÍDIOS, com o nome original.
+          Os ZIPs são abertos aqui e tudo vai solto pra SUBSÍDIOS, com o nome original. Áudios e vídeos vão pra subpasta{' '}
+          {envio?.nome_pasta_audios ?? 'ÁUDIOS'} dentro de SUBSÍDIOS.
         </p>
         <Dropzone
           id="docs-input"
           texto="Arraste os documentos e ZIPs aqui"
-          subtexto="ZIP, PDF, imagens"
-          accept=".zip,.pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx,.txt"
+          subtexto="ZIP, PDF, imagens, áudios, vídeos"
+          accept=".zip,.pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx,.txt,.mp3,.ogg,.oga,.opus,.wav,.m4a,.aac,.amr,.wma,.flac,.3gp,.webm,.mp4,.m4v,.mov,.avi,.mkv,.wmv,.mpg,.mpeg,audio/*,video/*"
           onFiles={enviarDocumentos}
           carregando={carregandoDocs}
         />
@@ -378,12 +400,15 @@ export function EnvioDrive({ token, driveStatus }: { token: string; driveStatus:
           </div>
         )}
         {envio && envio.documentos.length > 0 && (
-          <ListaArquivos titulo={`${envio.documentos.length} arquivos prontos`}>
+          <ListaArquivos
+            titulo={`${envio.documentos.length} arquivos prontos`}
+            onLimpar={subindo || envio.documentos.some(d => status[d.id]) ? undefined : limparDocumentos}
+          >
             {envio.documentos.map(d => (
               <LinhaArquivo
                 key={d.id}
                 nome={d.nome}
-                detalhe={tamanhoFmt(d.tamanho)}
+                detalhe={d.audio ? `${tamanhoFmt(d.tamanho)} · vai pra ${envio.nome_pasta_audios ?? 'ÁUDIOS'}` : tamanhoFmt(d.tamanho)}
                 alerta={d.corrompido ? 'ZIP corrompido, vai subir como está' : undefined}
                 status={status[d.id]}
                 onRemover={subindo ? undefined : () => removerDocumento(d.id)}
@@ -408,7 +433,10 @@ export function EnvioDrive({ token, driveStatus }: { token: string; driveStatus:
         />
         {faturasPendentes.length > 0 && (
           <div className="space-y-2">
-            <ListaArquivos titulo={`${faturasPendentes.length} arquivos para juntar`}>
+            <ListaArquivos
+              titulo={`${faturasPendentes.length} arquivos para juntar`}
+              onLimpar={() => setFaturasPendentes([])}
+            >
               {faturasPendentes.map((f, i) => (
                 <LinhaArquivo
                   key={i}
@@ -453,6 +481,7 @@ export function EnvioDrive({ token, driveStatus }: { token: string; driveStatus:
                   <option value="nome">Ordem: nome do arquivo</option>
                   {envio.ordem_faturas === 'manual' && <option value="manual">Ordem: manual</option>}
                 </select>
+                {!faturasTravadas && <BotaoLimpar onLimpar={limparFaturas} />}
                 {envio.faturas_pdf && (
                   <button
                     onClick={verPdf}
@@ -656,12 +685,43 @@ function Dropzone({ id, texto, subtexto, accept, onFiles, carregando }: {
   )
 }
 
-function ListaArquivos({ titulo, children }: { titulo: string; children: React.ReactNode }) {
+function ListaArquivos({ titulo, onLimpar, children }: {
+  titulo: string; onLimpar?: () => void; children: React.ReactNode
+}) {
   return (
     <div>
-      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">{titulo}</p>
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">{titulo}</p>
+        {onLimpar && <BotaoLimpar onLimpar={onLimpar} />}
+      </div>
       <div className="space-y-1 max-h-80 overflow-y-auto">{children}</div>
     </div>
+  )
+}
+
+function BotaoLimpar({ onLimpar }: { onLimpar: () => void }) {
+  // Dois cliques: o primeiro pede confirmação e ela some sozinha em 4 segundos
+  const [confirmando, setConfirmando] = useState(false)
+  useEffect(() => {
+    if (!confirmando) return
+    const t = setTimeout(() => setConfirmando(false), 4000)
+    return () => clearTimeout(t)
+  }, [confirmando])
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        if (confirmando) {
+          setConfirmando(false)
+          onLimpar()
+        } else setConfirmando(true)
+      }}
+      className={`text-xs font-medium px-2 py-1 rounded-md transition-colors ${
+        confirmando ? 'bg-red-600 text-white hover:bg-red-700' : 'text-red-600 hover:bg-red-50'
+      }`}
+    >
+      {confirmando ? 'Clique de novo pra confirmar' : 'Limpar tudo'}
+    </button>
   )
 }
 
