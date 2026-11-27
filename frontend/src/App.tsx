@@ -56,6 +56,7 @@ function App() {
   const [aba, setAba] = useState<Aba>('envio')
   const [driveEscritorio, setDriveEscritorio] = useState<DriveStatus | null>(null)
   const [ehAdmin, setEhAdmin] = useState(false)
+  const [recuperandoSenha, setRecuperandoSenha] = useState(false)
 
   const authHeaders = (): Record<string, string> => {
     const token = session?.access_token
@@ -110,8 +111,9 @@ function App() {
       setAuthLoading(false)
     })
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session)
+      if (event === 'PASSWORD_RECOVERY') setRecuperandoSenha(true)
     })
 
     // Checar se voltou do OAuth do Drive
@@ -160,6 +162,10 @@ function App() {
         <div className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
       </div>
     )
+  }
+
+  if (session && recuperandoSenha) {
+    return <NovaSenha onPronto={() => setRecuperandoSenha(false)} />
   }
 
   if (!session) {
@@ -627,6 +633,48 @@ function Resultado({ relatorio, novoProcessamento, driveConectado, driveEnviando
       >
         Novo processamento
       </button>
+    </div>
+  )
+}
+
+function NovaSenha({ onPronto }: { onPronto: () => void }) {
+  const [senha, setSenha] = useState('')
+  const [erro, setErro] = useState('')
+  const [salvando, setSalvando] = useState(false)
+
+  const salvar = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (senha.length < 6) {
+      setErro('A senha precisa ter pelo menos 6 caracteres.')
+      return
+    }
+    setSalvando(true)
+    const { error } = await supabase.auth.updateUser({ password: senha })
+    setSalvando(false)
+    if (error) setErro(error.message)
+    else onPronto()
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+      <form onSubmit={salvar} className="bg-white rounded-xl border border-gray-200 p-6 w-full max-w-sm space-y-4">
+        <h2 className="font-semibold text-gray-900">Defina sua nova senha</h2>
+        <input
+          type="password"
+          value={senha}
+          onChange={e => setSenha(e.target.value)}
+          placeholder="Nova senha"
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+        />
+        {erro && <p className="text-sm text-red-600">{erro}</p>}
+        <button
+          type="submit"
+          disabled={salvando}
+          className="w-full bg-blue-600 text-white py-2.5 rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50"
+        >
+          {salvando ? 'Salvando...' : 'Salvar senha'}
+        </button>
+      </form>
     </div>
   )
 }
